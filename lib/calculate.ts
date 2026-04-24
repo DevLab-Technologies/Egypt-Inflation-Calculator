@@ -188,3 +188,117 @@ export function formatMultiplier(value: number, lang: Language): string {
   }).format(value);
   return `${num}×`;
 }
+import { 
+  getCPI, getGoldPrice, getBTCPrice, getFXRate,
+  getProjectedCPI, getProjectedGoldPrice, getProjectedBTCPrice, getProjectedFXRate,
+  FORECAST_ASSUMPTIONS 
+} from './historical-data';
+
+export interface ForecastResult {
+  year: number;
+  inflationAdjusted: number;
+  goldAdjusted: number;
+  bitcoinAdjusted: number | null;
+  egpInflationOnly: number;
+}
+
+export function calculateFutureValue(
+  amount: number,
+  fromYear: number,
+  toYear: number,
+  currentCpi: number,
+  currentGoldUsd: number,
+  currentBtcUsd: number,
+  currentFxRate: number,
+  currentYear: number
+): ForecastResult {
+  // Get historical CPI for the starting year
+  const fromCPI = getCPI(fromYear);
+  
+  // Project future values year by year
+  let inflationAdjusted = amount;
+  let goldAdjusted = amount;
+  let bitcoinAdjusted = amount;
+  let egpInflationOnly = amount;
+  
+  for (let year = fromYear + 1; year <= toYear; year++) {
+    if (year <= currentYear) {
+      // Use historical data
+      const yearCPI = getCPI(year);
+      inflationAdjusted = amount * (yearCPI / fromCPI);
+      
+      // For gold/BTC, need full historical calculation
+      if (year === toYear) {
+        const historicalGold = calculateGoldHistorical(amount, fromYear, year);
+        const historicalBTC = calculateBTCHistorical(amount, fromYear, year);
+        goldAdjusted = historicalGold;
+        bitcoinAdjusted = historicalBTC;
+        egpInflationOnly = amount * Math.pow(1 + getHistoricalInflationRate(year), year - fromYear);
+      }
+    } else {
+      // Use forecasts
+      const projectedCPI = getProjectedCPI(year, getCPI(currentYear), currentYear);
+      inflationAdjusted = amount * (projectedCPI / fromCPI);
+      
+      const projectedGold = getProjectedGoldPrice(year, currentGoldUsd, currentYear);
+      const projectedBTC = getProjectedBTCPrice(year, currentBtcUsd, currentYear);
+      const projectedFX = getProjectedFXRate(year, currentFxRate, currentYear);
+      
+      // Convert EGP → USD at historical rate, buy asset, sell at projected price
+      const historicalFX = getFXRate(fromYear);
+      const usdAmount = amount / historicalFX;
+      
+      goldAdjusted = (usdAmount / getGoldPrice(fromYear)) * projectedGold * projectedFX;
+      
+      if (fromYear >= 2010) {
+        bitcoinAdjusted = (usdAmount / getBTCPrice(fromYear)) * projectedBTC * projectedFX;
+      } else {
+        bitcoinAdjusted = null;
+      }
+      
+      egpInflationOnly = amount * Math.pow(1 + FORECAST_ASSUMPTIONS.inflation, year - fromYear);
+    }
+  }
+  
+  return {
+    year: toYear,
+    inflationAdjusted,
+    goldAdjusted,
+    bitcoinAdjusted,
+    egpInflationOnly
+  };
+}
+
+function getHistoricalInflationRate(year: number): number {
+  // You can extract actual year-over-year inflation from CPI data
+  // For now, return assumption
+  return 0.25;
+}
+
+function calculateGoldHistorical(amount: number, fromYear: number, toYear: number): number {
+  const historicalFXFrom = getFXRate(fromYear);
+  const historicalFXTo = getFXRate(toYear);
+  const goldFrom = getGoldPrice(fromYear);
+  const goldTo = getGoldPrice(toYear);
+  
+  const usdAmount = amount / historicalFXFrom;
+  const goldOunces = usdAmount / goldFrom;
+  const usdFinal = goldOunces * goldTo;
+  
+  return usdFinal * historicalFXTo;
+}
+
+function calculateBTCHistorical(amount: number, fromYear: number, toYear: number): number {
+  if (fromYear < 2010) return null;
+  
+  const historicalFXFrom = getFXRate(fromYear);
+  const historicalFXTo = getFXRate(toYear);
+  const btcFrom = getBTCPrice(fromYear);
+  const btcTo = getBTCPrice(toYear);
+  
+  const usdAmount = amount / historicalFXFrom;
+  const btcAmount = usdAmount / btcFrom;
+  const usdFinal = btcAmount * btcTo;
+  
+  return usdFinal * historicalFXTo;
+}

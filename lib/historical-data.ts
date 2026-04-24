@@ -264,3 +264,36 @@ export function getFxRate(code: CurrencyCode, year: Year): number | null {
       return null;
   }
 }
+// Add to existing file
+export const FORECAST_ASSUMPTIONS = {
+  inflation: 0.25,      // 25% annual inflation forecast
+  goldUSD: 0.08,        // 8% annual gold price appreciation
+  bitcoin: 0.15,        // 15% annual BTC appreciation (conservative)
+  egpDevaluation: 0.20  // 20% annual EGP/USD depreciation
+};
+
+export function getProjectedCPI(targetYear: number, baseCpi: number, baseYear: number): number {
+  const yearsDiff = targetYear - baseYear;
+  if (yearsDiff <= 0) return baseCpi;
+  
+  // Compound inflation forecast
+  return baseCpi * Math.pow(1 + FORECAST_ASSUMPTIONS.inflation, yearsDiff);
+}
+
+export function getProjectedGoldPrice(targetYear: number, currentGoldUsd: number, currentYear: number): number {
+  const yearsDiff = targetYear - currentYear;
+  if (yearsDiff <= 0) return currentGoldUsd;
+  return currentGoldUsd * Math.pow(1 + FORECAST_ASSUMPTIONS.goldUSD, yearsDiff);
+}
+
+export function getProjectedBTCPrice(targetYear: number, currentBtcUsd: number, currentYear: number): number {
+  const yearsDiff = targetYear - currentYear;
+  if (yearsDiff <= 0) return currentBtcUsd;
+  return currentBtcUsd * Math.pow(1 + FORECAST_ASSUMPTIONS.bitcoin, yearsDiff);
+}
+
+export function getProjectedFXRate(targetYear: number, currentRate: number, currentYear: number): number {
+  const yearsDiff = targetYear - currentYear;
+  if (yearsDiff <= 0) return currentRate;
+  return currentRate * Math.pow(1 + FORECAST_ASSUMPTIONS.egpDevaluation, yearsDiff);
+}

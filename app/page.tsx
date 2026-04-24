@@ -1,40 +1,188 @@
-"use client";
+'use client';
 
-import { useEffect, useMemo, useState } from "react";
-import {
-  CURRENT_YEAR,
-  EARLIEST_BTC_YEAR,
-  EARLIEST_YEAR,
-  SUPPORTED_CURRENCIES,
-  type CurrencyCode,
-} from "@/lib/historical-data";
-import {
-  calculate,
-  formatEGP,
-  formatMultiplier,
-  formatNumber,
-  formatPercent,
-  type HoldingUnit,
-  type Language,
-  type ScenarioResult,
-} from "@/lib/calculate";
+import { useState } from 'react';
+import { calculateFutureValue, ForecastResult } from '@/lib/calculate';
+import { getCPI, getGoldPrice, getBTCPrice, getFXRate, CURRENT_YEAR } from '@/lib/historical-data';
 
-const YEARS = Array.from(
-  { length: CURRENT_YEAR - EARLIEST_YEAR + 1 },
-  (_, i) => CURRENT_YEAR - i
-);
+export default function Home() {
+  const [amount, setAmount] = useState('1000');
+  const [fromYear, setFromYear] = useState('2020');
+  const [toYear, setToYear] = useState(CURRENT_YEAR.toString());
+  const [results, setResults] = useState<ForecastResult[]>([]);
+  const [showForecast, setShowForecast] = useState(true);
 
-const DEFAULT_AMOUNT = 1000;
-const DEFAULT_YEAR = 2010;
-const DEFAULT_CURRENCY: CurrencyCode = "USD";
-const DEFAULT_LANG: Language = "ar";
-const LANG_STORAGE_KEY = "eic.lang";
+  const currentCpi = getCPI(CURRENT_YEAR);
+  const currentGold = getGoldPrice(CURRENT_YEAR);
+  const currentBtc = getBTCPrice(CURRENT_YEAR);
+  const currentFx = getFXRate(CURRENT_YEAR);
 
-type Dict = {
-  title: string;
-  subtitle: string;
-  amountLabel: string;
-  yearLabel: string;
+  const handleCalculate = () => {
+    const numAmount = parseFloat(amount);
+    const numFromYear = parseInt(fromYear);
+    const numToYear = parseInt(toYear);
+    
+    if (isNaN(numAmount) || isNaN(numFromYear) || isNaN(numToYear)) return;
+    
+    const forecastResults: ForecastResult[] = [];
+    
+    // Calculate for each year from fromYear to toYear
+    for (let year = numFromYear; year <= numToYear; year++) {
+      const result = calculateFutureValue(
+        numAmount,
+        numFromYear,
+        year,
+        currentCpi,
+        currentGold,
+        currentBtc,
+        currentFx,
+        CURRENT_YEAR
+      );
+      forecastResults.push(result);
+    }
+    
+    setResults(forecastResults);
+  };
+
+  const formatEGP = (value: number) => {
+    return new Intl.NumberFormat('en-EG', {
+      style: 'currency',
+      currency: 'EGP',
+      maximumFractionDigits: 0
+    }).format(value);
+  };
+
+  const years = Array.from({ length: CURRENT_YEAR - 2000 + 10 }, (_, i) => (2000 + i).toString());
+
+  return (
+    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 py-12 px-4">
+      <div className="max-w-6xl mx-auto">
+        <h1 className="text-4xl font-bold text-center mb-2 text-slate-800">
+          Egypt Inflation Calculator
+        </h1>
+        <p className="text-center text-slate-600 mb-8">
+          What's your money worth now — and in the future?
+        </p>
+
+        <div className="bg-white rounded-2xl shadow-xl p-6 mb-8">
+          <div className="grid md:grid-cols-3 gap-4 mb-6">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Amount (EGP)
+              </label>
+              <input
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Enter amount"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                From Year
+              </label>
+              <select
+                value={fromYear}
+                onChange={(e) => setFromYear(e.target.value)}
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                {years.map(year => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                To Year {showForecast && '(Past or Future)'}
+              </label>
+              <input
+                type="number"
+                value={toYear}
+                onChange={(e) => setToYear(e.target.value)}
+                min="2000"
+                max={CURRENT_YEAR + 10}
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          
+          <div className="flex gap-4">
+            <button
+              onClick={handleCalculate}
+              className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition"
+            >
+              Calculate
+            </button>
+            
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showForecast}
+                onChange={(e) => setShowForecast(e.target.checked)}
+                className="w-4 h-4"
+              />
+              <span className="text-sm text-slate-600">Enable future forecasting</span>
+            </label>
+          </div>
+        </div>
+
+        {results.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full bg-white rounded-xl shadow-lg overflow-hidden">
+              <thead className="bg-slate-800 text-white">
+                <tr>
+                  <th className="px-6 py-3 text-left">Year</th>
+                  <th className="px-6 py-3 text-left">Inflation-Adjusted</th>
+                  <th className="px-6 py-3 text-left">Gold Strategy</th>
+                  <th className="px-6 py-3 text-left">Bitcoin Strategy</th>
+                  <th className="px-6 py-3 text-left">Raw Inflation (EGP)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {results.map((result, idx) => {
+                  const isForecast = result.year > CURRENT_YEAR;
+                  return (
+                    <tr key={idx} className={isForecast ? 'bg-amber-50' : 'hover:bg-slate-50'}>
+                      <td className="px-6 py-4 font-medium">
+                        {result.year}
+                        {isForecast && (
+                          <span className="ml-2 text-xs bg-amber-200 text-amber-800 px-2 py-0.5 rounded">
+                            Forecast
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">{formatEGP(result.inflationAdjusted)}</td>
+                      <td className="px-6 py-4">{formatEGP(result.goldAdjusted)}</td>
+                      <td className="px-6 py-4">
+                        {result.bitcoinAdjusted ? formatEGP(result.bitcoinAdjusted) : 'N/A (pre-2010)'}
+                      </td>
+                      <td className="px-6 py-4">{formatEGP(result.egpInflationOnly)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            
+            <div className="mt-4 p-4 bg-amber-50 rounded-lg text-sm text-amber-800">
+              <strong>📈 Forecast Notes:</strong> Future projections assume:
+              <ul className="list-disc list-inside mt-2 space-y-1">
+                <li>25% annual inflation</li>
+                <li>8% annual gold appreciation (USD)</li>
+                <li>15% annual Bitcoin appreciation (conservative)</li>
+                <li>20% annual EGP devaluation against USD</li>
+                <li className="text-xs mt-2 text-amber-600">
+                  ⚠️ These are illustrative assumptions only — not financial advice.
+                </li>
+              </ul>
+            </div>
+          </div>
+        )}
+      </div>
+    </main>
+  );
+                                                 }  yearLabel: string;
   currencyLabel: string;
   currencyName: Record<CurrencyCode, string>;
   emptyState: string;
